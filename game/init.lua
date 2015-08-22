@@ -69,13 +69,25 @@ function Game:runUpdates(dt)
 end
 
 
+
+local function activitySorter(self)
+	return function (p1, p2)
+
+		local skey1	= (self.players[p1].activity * 1000000000) + self.players[p1].activityTimeout * 100000000 + self.players[p1].duration * 1000 + self.playerData[p1].exp
+		local skey2	= (self.players[p2].activity * 1000000000) + self.players[p2].activityTimeout * 100000000 + self.players[p2].duration * 1000 + self.playerData[p2].exp
+
+		return skey1 > skey2
+	end
+end
+
 function Game:updateInternalList()
 	local plist	= {}
 	for k, v in pairs(self.players) do
 		table.insert(plist, k)
 	end
 
-	table.sort(plist, activitySorter)
+	local sorter		= activitySorter(self)
+	table.sort(plist, sorter)
 	self.internalPlayers	= plist
 
 end
