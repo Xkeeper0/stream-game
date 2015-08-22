@@ -50,28 +50,28 @@ function gstart(channel, users)
 			ourGame:addPlayer(user, channel)
 		end
 
-		ircserv:hook("OnChat", 
+		ircserv:hook("OnChat",
 			function(u, c, m)
 				ourGame:playerChat(u.nick, c, m)
 			end
 			)
 
 
-		ircserv:hook("OnJoin", 
+		ircserv:hook("OnJoin",
 			function(u, c)
 				print("Adding to game:", u.nick)
 				ourGame:addPlayer(u.nick, c)
 			end
 			)
 
-		ircserv:hook("OnPart", 
+		ircserv:hook("OnPart",
 			function(u, c)
 				print("Removing from game:", u.nick)
 				ourGame:removePlayer(u.nick, c)
 			end
 			)
 
-		ircserv:hook("OnQuit", 
+		ircserv:hook("OnQuit",
 			function(u, m)
 				print("Removing from game (quit):", u.nick)
 				ourGame:removePlayer(u.nick)
@@ -230,7 +230,7 @@ function drawMessages()
 	local y	= windowStats.h - 15
 	love.graphics.setColor(0, 0, 0, 200)
 	love.graphics.rectangle("fill", 0, (y - 2) - (c - 1) * 12, 400, 100)
-	
+
 	for i, m in ipairs(messages) do
 		local y	= y - (c - i) * 12
 		local color	= math.min(255, (m.life) * 255)
