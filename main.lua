@@ -32,7 +32,7 @@ end
 
 function activitySorter(p1, p2)
 
-	local skey1	= (ourGame.players[p1].activity * 1000000000) + ourGame.players[p1].activityTimeout * 100000000 + ourGame.players[p1].duration * 1000 + ourGame.playerData[p2].exp
+	local skey1	= (ourGame.players[p1].activity * 1000000000) + ourGame.players[p1].activityTimeout * 100000000 + ourGame.players[p1].duration * 1000 + ourGame.playerData[p1].exp
 	local skey2	= (ourGame.players[p2].activity * 1000000000) + ourGame.players[p2].activityTimeout * 100000000 + ourGame.players[p2].duration * 1000 + ourGame.playerData[p2].exp
 
 	return skey1 > skey2
