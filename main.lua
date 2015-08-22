@@ -100,7 +100,7 @@ function love.load()
 		end
 		)
 
-	ircserv:connect(settings.host)
+	ircserv:connect(settings.server)
 	ircserv:trackUsers(true)
 	ircserv:hook("NameList", 20, gstart)
 	ircserv:join(settings.channel)
