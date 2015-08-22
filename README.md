@@ -1,0 +1,3 @@
+A game for streaming. Maybe...
+
+Built for LOVE2d 0.9.2.
