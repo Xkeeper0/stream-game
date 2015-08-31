@@ -92,11 +92,11 @@ local function activitySorter(self)
 		local player1	= { activity = self.players[p1], data = self.playerData[p1] }
 		local player2	= { activity = self.players[p2], data = self.playerData[p2] }
 
-		if player1.isInChannel and not player2.isInChannel then
+		if player1.activity.isInChannel and not player2.activity.isInChannel then
 			-- P1 in channel, P2 is not
 			return true
 
-		elseif not player1.isInChannel and player2.isInChannel then
+		elseif not player1.activity.isInChannel and player2.activity.isInChannel then
 			-- P2 in channel, P1 is not
 			return false
 
