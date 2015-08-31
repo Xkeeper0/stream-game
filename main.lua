@@ -35,6 +35,7 @@ end
 -- Handle starting of a game with a given channel and users
 function gstart(channel, users)
 	if (string.lower(channel) == string.lower(settings.channel)) then
+		love.window.setTitle(channel .." - streamgame")
 		settings.channel	= channel
 		ourGame		= Game.start(channel)
 		tprint(ourGame)
