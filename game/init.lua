@@ -7,6 +7,7 @@ Game.__index				= Game
 Game.maxActivity			= 150
 Game.activityTimeout		= 300
 Game.expTickRate			= 1
+Game.sortListUpdateRate		= 5
 
 function Game.start(channel)
 
@@ -21,7 +22,9 @@ function Game.start(channel)
 		players			= {},
 		playerData		= playerData,		-- All players + data
 		nextUpdate		= Game.updateTime,
-		internalPlayers	= {}
+		internalPlayers	= {},
+		sortListUpdate	= Game.sortListUpdateRate,
+		playerCount		= 0,
 		}
 
 	return setmetatable(ret, Game)
@@ -32,36 +35,49 @@ end
 
 function Game:update(dt)
 
-	--self.updateTime	= self.updateTime - dt
-	--while (self.updateTime < 0) do
-	--	self.updateTime	= self.updateTime + Game.updateTime
-		self:runUpdates(dt)
-	--end
+	self:runUpdates(dt)
+
+	self.sortListUpdate	= self.sortListUpdate - dt
+	if self.sortListUpdate < 0 then
+		self.sortListUpdate	= self.sortListUpdate + Game.sortListUpdateRate
+		self:updateInternalList()
+	end
+
 end
 
 
 
 function Game:runUpdates(dt)
 
+	local	needSortUpdate	= false
+
 	for player, pdata in pairs(self.players) do
-		pdata.duration	= pdata.duration + dt
+		if pdata.isInChannel then
+			pdata.duration	= pdata.duration + dt
+		end
+
 		if pdata.activity then
+
 			pdata.activity			= pdata.activity - dt
+
 			if (self.players[player].activity) > 0 then
+				-- Still "active"
 				pdata.activeDuration	= pdata.activeDuration + dt
 				pdata.activityTimeout	= Game.activityTimeout
-				-- Replace with "giveEXP" thing to handle flashy stuff
 				self:awardExp(player, self:getExpPerTick(pdata, dt))
+
 			else
 				-- Activity timed out
 				pdata.activity			= 0
 				pdata.activityTimeout	= pdata.activityTimeout - dt
+
 				if pdata.activityTimeout < 0 then
 					pdata.activeDuration	= 0
 					pdata.activityTimeout	= 0
 				end
 
 			end
+
 		end
 
 	end
@@ -73,22 +89,45 @@ end
 local function activitySorter(self)
 	return function (p1, p2)
 
-		local skey1	= (self.players[p1].activity * 1000000000) + self.players[p1].activityTimeout * 100000000 + self.players[p1].duration * 1000 + self.playerData[p1].exp
-		local skey2	= (self.players[p2].activity * 1000000000) + self.players[p2].activityTimeout * 100000000 + self.players[p2].duration * 1000 + self.playerData[p2].exp
+		local player1	= { activity = self.players[p1], data = self.playerData[p1] }
+		local player2	= { activity = self.players[p2], data = self.playerData[p2] }
 
-		return skey1 > skey2
+		if player1.isInChannel and not player2.isInChannel then
+			-- P1 in channel, P2 is not
+			return true
+
+		elseif not player1.isInChannel and player2.isInChannel then
+			-- P2 in channel, P1 is not
+			return false
+
+		elseif player1.activity.activityTimeout > 0 and player2.activity.activityTimeout <= 0 then
+			-- P1 is active, P2 is not
+			return true
+
+		elseif player1.activity.activityTimeout <= 0 and player2.activity.activityTimeout > 0 then
+			-- P2 is active, P1 is not
+			return false
+
+		else
+			-- Highest EXP wins
+			return player1.data.exp > player2.data.exp
+		end
 	end
 end
 
+
 function Game:updateInternalList()
 	local plist	= {}
+	local count	= 0
 	for k, v in pairs(self.players) do
-		table.insert(plist, k)
+		count	= count + 1
+		plist[count] = k
 	end
 
 	local sorter		= activitySorter(self)
 	table.sort(plist, sorter)
 	self.internalPlayers	= plist
+	self.playerCount		= count
 
 end
 
@@ -106,16 +145,19 @@ function Game:addPlayer(player, channel)
 		}
 	end
 
-	self.players[player]	= {
-		activity			= 0,
-		activeDuration		= 0,
-		activityTimeout		= 0,
-		duration			= 0,
-		}
+	if not self.players[player] then
+		self.players[player]	= {
+			isInChannel			= true,
+			activity			= 0,
+			activeDuration		= 0,
+			activityTimeout		= 0,
+			duration			= 0,
+			}
+	end
 	sounds.join:play()
 	print("Added player", player)
 	addMessage(player .." joined!")
-	self:updateInternalList()
+	self.sortListUpdate			= 0
 end
 
 -- On part, remove player from active-players list
@@ -124,22 +166,29 @@ function Game:removePlayer(player, channel)
 	if self.players[player] then
 		sounds.leave:play()
 		addMessage(player .." left.")
-		self.players[player]	= nil
+		--self.players[player]	= nil
+
+		self.players[player].isInChannel		= false
+		self.players[player].activeDuration		= 0
+		self.players[player].activityTimeout	= 0
+
 	end
-	self:updateInternalList()
+	self.sortListUpdate			= 0
 end
 
 
 function Game:playerChat(player, channel, message)
 	print("Chat", channel, player, message)
-	if (not self.players[player]) then 
-		print("Unknown player ".. player .."!")
-		return
+	if (not self.players[player]) then
+		print("Adding not-joined player ".. player .."!")
+		self:addPlayer(player, channel)
+
 	end
 	print("Updating activity:", player)
 	self.players[player].activity	= math.min(Game.maxActivity, self.players[player].activity + 60)
 	print("New activity:", self.players[player].activity)
-	self:updateInternalList()
+	--self:updateInternalList()
+	self.sortListUpdate			= 0
 
 end
 
