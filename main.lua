@@ -1,5 +1,6 @@
 local settings		= require("settings")
 
+local class			= require('middleclass')
 
 
 package.path = package.path .. ";./?/init.lua"
@@ -145,13 +146,7 @@ function drawPlayers()
 	local i	= 0
 	local count		= math.floor(windowStats.h / 35)
 	local tcount	= 0
-	if count < ourGame.playerCount then
-		tcount		= math.floor(windowStats.h / 18)
-		drawPlayersSmall(tcount)
-	else
-		drawPlayersBig(count)
-	end
-
+	drawPlayersSmall(tcount)
 end
 
 
@@ -209,56 +204,6 @@ function drawPlayersSmall(count)
 			love.graphics.setColor(255, 255, 255)
 
 			drawExpBar(230, y + 2, (400 - 270), (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), 6, false)
-		end
-		i = i + 1
-	end
-end
-
-
-function drawPlayersBig(count)
-	local i = 0
-	for _, pname in pairs(ourGame.internalPlayers) do
-		if i < count then
-			local y			= 3 + i * 35
-			local player	= ourGame.players[pname]
-			local pdata		= ourGame.playerData[pname]
-			local pEXP		= (pdata.dexp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp) * 100
-
-			love.graphics.setFont(fonts.big)
-			local col		= 128
-			local pEXPrate	= 0
-			if player.activityTimeout > 0 then
-				col			= 128 + ((player.activityTimeout / Game.activityTimeout) * 72)
-				pEXPrate	= ourGame:getExpPerTick(player, 1)
-			end
-			if player.activity > 0 then
-				col			= 200 + math.min(55, player.activity)
-			end
-			if not player.isInChannel then
-				col			= 70
-			end
-
-			love.graphics.setColor(col, col, col)
-			love.graphics.print(pname, 3, y + 8)
-			love.graphics.setColor(0, 0, 0)
-			love.graphics.rectangle("fill", 135, y, 265, 40)
-			love.graphics.setColor(255, 255, 255)
-
-			love.graphics.setFont(fonts.number)
-			love.graphics.printf(string.format("Lv%3d", pdata.level), 140, y + 6, 125, "left")
-			love.graphics.printf(string.format("%s EXP", formatNumberK(pdata.exp)), 143, y + 6, 124, "right")
-
-			love.graphics.setFont(fonts.numbersm)
-			if pEXPrate < 0.001 then
-				love.graphics.setColor(128, 128, 128)
-			elseif player.activity > 60 then
-				love.graphics.setColor(255, 238, 155)
-			end
-			love.graphics.printf(string.format("%.2f", pEXPrate), 320, y + 8, 73, "right")
-			love.graphics.setColor(255, 255, 255)
-
-
-			drawExpBar(140, y + 16, 250, (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), nil, true)
 		end
 		i = i + 1
 	end
