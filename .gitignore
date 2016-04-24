@@ -1,3 +1,4 @@
 settings.lua
 *.lnk
 desktop.ini
+*.db
