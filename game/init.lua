@@ -4,10 +4,24 @@ local Game	= {}
 local json					= require("json")
 
 Game.__index				= Game
-Game.maxActivity			= 150
-Game.activityTimeout		= 300
+Game.maxActivity			= 300
+Game.activityTimeout		= 600
 Game.expTickRate			= 1
 Game.sortListUpdateRate		= 5
+
+Game.durationBonus	= {
+		{	time	=       0,	rate	=   1.00	},	-- Base rate
+		{	time	=      60,	rate	=   1.00	},	-- 1 minute
+		{	time	=     120,	rate	=   1.33	},	-- 2 minutes
+		{	time	=     300,	rate	=   2.00	},	-- 5 minutes
+		{	time	=     600,	rate	=   3.00	},	-- 10 minutes
+		{	time	=    1800,	rate	=   4.50	},	-- 30 minutes
+		{	time	=    3600,	rate	=   6.25	},	-- 1 hour
+		{	time	=    7200,	rate	=   8.00	},	-- 2 hours
+		{	time	=   86400,	rate	=  12.00	},	-- a full day (should not happen)
+		{	time	= 9999999,	rate	=  55.00	}	-- forever (should NEVER happen)
+	}
+
 
 function Game.start(channel)
 
@@ -185,7 +199,8 @@ function Game:playerChat(player, channel, message)
 
 	end
 	print("Updating activity:", player)
-	self.players[player].activity	= math.min(Game.maxActivity, self.players[player].activity + 60)
+	local starterBonus	= (self.players[player].activity < 1) and 10 or 0
+	self.players[player].activity	= math.min(Game.maxActivity, self.players[player].activity + 60 + starterBonus)
 	print("New activity:", self.players[player].activity)
 	--self:updateInternalList()
 	self.sortListUpdate			= 0
@@ -221,32 +236,35 @@ function Game.getLevelExp(level)
 end
 
 
-function Game:getExpPerTick(pdata, dt)
-	local d	= pdata.duration
-	local b	= 0
-	if d < 0 then
-		b = false
-	elseif d < 60 then
-		b = 1
-	elseif d < 60 then
-		b = 2
-	elseif d < 300 then
-		b = 3
-	elseif d < 600 then
-		b = 4
-	elseif d < 1800 then
-		b = 5
-	else
-		b = 7
+
+function Game.getDurationBonus(time)
+	local last	= 0
+	local i		= 1
+	while (time >= Game.durationBonus[i + 1].time) do
+		i	= i + 1
 	end
 
+	-- i = current level, i+1 = new one
+	local timeThis	= (        time                   - Game.durationBonus[i].time)
+	local timeTotal	= (Game.durationBonus[i + 1].time - Game.durationBonus[i].time)
+
+	local timepct	= timeThis / timeTotal
+
+	local bonus		= Game.durationBonus[i + 1].rate * (timepct) + Game.durationBonus[i].rate * (1 - timepct)
+
+	return bonus
+
+end
+
+
+function Game:getExpPerTick(pdata, dt)
+	local b	= Game.getDurationBonus(pdata.duration)
 
 	local exp	= b * 
 			(dt * self.expTickRate) * 
 			(0.5 + math.log(math.max(1, pdata.activeDuration - 300)) / 3) *
 			math.min(1, pdata.activity / 60)
 
-	--print(exp, (dt * self.expTickRate), (0.5 + math.log(pdata.activeDuration) / 3), math.min(1, pdata.activity / 60))
 	return math.max(0, exp)
 
 end

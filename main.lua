@@ -75,6 +75,8 @@ function love.load()
 	love.audio.setVolume(0.5)
 	fonts.big		= love.graphics.newFont(18)
 	fonts.small		= love.graphics.newFont(12)
+	fonts.number	= love.graphics.newImageFont("images/numbers.png", "0123456789 kEXPLv.")
+	fonts.numbersm	= love.graphics.newImageFont("images/numbers-small.png", "0123456789.")
 	sounds.levelup	= love.audio.newSource("sounds/levelup.ogg", "static")
 	sounds.join		= love.audio.newSource("sounds/p-join.ogg", "static")
 	sounds.leave	= love.audio.newSource("sounds/p-leave.ogg", "static")
@@ -152,6 +154,16 @@ function drawPlayers()
 
 end
 
+
+function formatNumberK(n)
+	if n < 1000000 then
+		return tostring(math.floor(n))
+	else
+		n	= tostring(math.floor(n / 1000)) .."k"
+		return n
+	end
+end
+
 -- @TODO: Refactor this mess. D:
 function drawPlayersSmall(count)
 	local i = 0
@@ -161,11 +173,13 @@ function drawPlayersSmall(count)
 			local player	= ourGame.players[pname]
 			local pdata		= ourGame.playerData[pname]
 			local pEXP		= (pdata.dexp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp) * 100
+			local pEXPrate	= 0
 
 			--love.graphics.setFont(fonts.big)
 			local col		= 128
 			if player.activityTimeout > 0 then
 				col			= 128 + ((player.activityTimeout / Game.activityTimeout) * 72)
+				pEXPrate	= ourGame:getExpPerTick(player, 1)
 			end
 			if player.activity > 0 then
 				col			= 200 + math.min(55, player.activity)
@@ -180,11 +194,21 @@ function drawPlayersSmall(count)
 			love.graphics.rectangle("fill", 100, y, 265, 20)
 			love.graphics.setColor(255, 255, 255)
 			love.graphics.setFont(fonts.small)
-			love.graphics.printf("Lv", 110, y, 150, "left")
-			love.graphics.printf(string.format("%d", pdata.level)  , 110, y,  32, "right")
-			love.graphics.printf(string.format("%d EXP", pdata.exp), 110, y, 115, "right")
+			love.graphics.setFont(fonts.number)
+			love.graphics.print("Lv", 110, y + 3)
+			love.graphics.printf(string.format("%d", pdata.level)  , 122, y + 3,  28, "right")
+			love.graphics.printf(string.format("%s XP", formatNumberK(pdata.exp)), 126, y + 3, 102, "right")
 
-			drawExpBar(230, y + 2, (400 - 240), (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), 6, false)
+			love.graphics.setFont(fonts.numbersm)
+			if pEXPrate < 0.001 then
+				love.graphics.setColor(128, 128, 128)
+			elseif player.activity > 60 then
+				love.graphics.setColor(255, 238, 155)
+			end
+			love.graphics.printf(string.format("%.2f", pEXPrate), 370, y + 4, 28, "right")
+			love.graphics.setColor(255, 255, 255)
+
+			drawExpBar(230, y + 2, (400 - 270), (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), 6, false)
 		end
 		i = i + 1
 	end
@@ -202,8 +226,10 @@ function drawPlayersBig(count)
 
 			love.graphics.setFont(fonts.big)
 			local col		= 128
+			local pEXPrate	= 0
 			if player.activityTimeout > 0 then
 				col			= 128 + ((player.activityTimeout / Game.activityTimeout) * 72)
+				pEXPrate	= ourGame:getExpPerTick(player, 1)
 			end
 			if player.activity > 0 then
 				col			= 200 + math.min(55, player.activity)
@@ -217,9 +243,20 @@ function drawPlayersBig(count)
 			love.graphics.setColor(0, 0, 0)
 			love.graphics.rectangle("fill", 135, y, 265, 40)
 			love.graphics.setColor(255, 255, 255)
-			love.graphics.setFont(fonts.small)
-			love.graphics.printf(string.format("Level %d", pdata.level), 140, y, 125, "left")
-			love.graphics.printf(string.format("%d EXP", pdata.exp), 143, y, 250, "right")
+
+			love.graphics.setFont(fonts.number)
+			love.graphics.printf(string.format("Lv%3d", pdata.level), 140, y + 6, 125, "left")
+			love.graphics.printf(string.format("%s EXP", formatNumberK(pdata.exp)), 143, y + 6, 124, "right")
+
+			love.graphics.setFont(fonts.numbersm)
+			if pEXPrate < 0.001 then
+				love.graphics.setColor(128, 128, 128)
+			elseif player.activity > 60 then
+				love.graphics.setColor(255, 238, 155)
+			end
+			love.graphics.printf(string.format("%.2f", pEXPrate), 320, y + 8, 73, "right")
+			love.graphics.setColor(255, 255, 255)
+
 
 			drawExpBar(140, y + 16, 250, (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), nil, true)
 		end
