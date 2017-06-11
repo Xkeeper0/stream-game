@@ -1,5 +1,6 @@
 local settings		= require("settings")
 
+local class			= require('middleclass')
 
 
 package.path = package.path .. ";./?/init.lua"
@@ -8,14 +9,22 @@ local json		= require("json")
 --local socket	= require("socket")
 local irc		= require("irc")
 local Game		= require("game")
+local WebRequest	= require("luajit-request")
 
 local ircserv	= nil
 local ourGame	= nil
 local fonts		= {}
 local windowStats	= {}
 local lastDt	= 0
+local followers	= {}
 
 sounds	= {}
+
+local didThread = false
+local followThread	= nil
+local cFollowing	= love.thread.getChannel("following")
+local cFollowingNew	= love.thread.getChannel("newFollowers")
+local threadError	= nil
 
 -- Debug function to recursively print table contents
 function tprint (tbl, indent)
@@ -38,15 +47,19 @@ function gstart(channel, users)
 		love.window.setTitle(channel .." - streamgame")
 		settings.channel	= channel
 		ourGame		= Game.start(channel)
-		tprint(ourGame)
+		--tprint(ourGame)
 		for user, t in pairs(users.users) do
 			print("Adding to game:", user)
 			ourGame:addPlayer(user, channel)
+			ourGame:updateFollowing(followers, user)
 		end
 
 		ircserv:hook("OnChat",
 			function(u, c, m)
-				ourGame:playerChat(u.nick, c, m)
+				local t = ourGame:playerChat(u.nick, c, m)
+				if t then
+					ourGame:updateFollowing(followers, u.nick)
+				end
 			end
 			)
 
@@ -54,6 +67,7 @@ function gstart(channel, users)
 		ircserv:hook("OnJoin",
 			function(u, c)
 				ourGame:addPlayer(u.nick, c)
+				ourGame:updateFollowing(followers, u.nick)
 			end
 			)
 
@@ -77,9 +91,19 @@ function love.load()
 	fonts.small		= love.graphics.newFont(12)
 	fonts.number	= love.graphics.newImageFont("images/numbers.png", "0123456789 kEXPLv.")
 	fonts.numbersm	= love.graphics.newImageFont("images/numbers-small.png", "0123456789.")
+	fonts.stars		= love.graphics.newImageFont("images/starbadges.png", "0123456789ABCDEF")
+	fonts.starnums	= love.graphics.newImageFont("images/starnumbers.png", " 0123456789dmy")
 	sounds.levelup	= love.audio.newSource("sounds/levelup.ogg", "static")
 	sounds.join		= love.audio.newSource("sounds/p-join.ogg", "static")
 	sounds.leave	= love.audio.newSource("sounds/p-leave.ogg", "static")
+	sounds.follower	= love.audio.newSource("sounds/new-follower.ogg", "static")
+
+	local _a, _b, _c	= love.window.getMode()
+	windowStats	= { w = _a, h = _b, f = _c }
+
+	tprint(windowStats)
+
+	-- if true then return end
 
 	ircserv			= irc.new{ nick = settings.nick, }
 
@@ -98,12 +122,9 @@ function love.load()
 	ircserv:hook("NameList", 20, gstart)
 	ircserv:join(settings.channel)
 
-	local _a, _b, _c	= love.window.getMode()
-	windowStats	= { w = _a, h = _b, f = _c }
-
-	tprint(windowStats)
 
 end
+
 
 function love.update(dt)
 	lastDt	= dt
@@ -117,10 +138,38 @@ function love.update(dt)
 
 	updateMessages(dt)
 
+	if not didThread then
+		didThread		= true
+		followThread	= love.thread.newThread("threads/getfollowers.lua")
+		followThread:start()
+
+	elseif cFollowing:getCount() > 0 and ourGame then
+		print("Got initial follower update")
+		local followerUpdate = json.decode(cFollowing:pop())
+		ourGame:updateFollowing(followerUpdate)
+		updateLocalFollowing(followerUpdate)
+
+	elseif cFollowingNew:getCount() > 0 and ourGame then
+		print("Got new follower update")
+		local followerUpdate = json.decode(cFollowingNew:pop())
+		ourGame:updateFollowing(followerUpdate)
+		updateLocalFollowing(followerUpdate)
+		for k,v in pairs(followerUpdate) do
+			addMessage(k .." just followed!")
+			sounds.follower:play()
+		end
+	else
+		local xxx = followThread:getError()
+		if xxx and not threadError then
+			print("thread error :( ".. xxx)
+			threadError	= xxx
+		end
+	end
+
+
 end
 
 function love.draw()
-
 
 	if ourGame then
 		drawPlayers()
@@ -129,29 +178,23 @@ function love.draw()
 
 	drawMessages()
 
-	--[[
-	love.graphics.setColor(0, 0, 0)
-	love.graphics.rectangle("fill", 0, 0, 50, 20)
-	love.graphics.setColor(255, 255, 255)
-	love.graphics.print(string.format("%08.7f\n%3.1f", lastDt, lastDt / (1 / 60) * 60), 0, 0)
-	--]]
-
 end
 
+
+
+function updateLocalFollowing(newFollowers)
+	for k,v in pairs(newFollowers) do
+		followers[k]	= v
+	end
+end
 
 
 function drawPlayers()
 
 	local i	= 0
 	local count		= math.floor(windowStats.h / 35)
-	local tcount	= 0
-	if count < ourGame.playerCount then
-		tcount		= math.floor(windowStats.h / 18)
-		drawPlayersSmall(tcount)
-	else
-		drawPlayersBig(count)
-	end
-
+	local tcount	= math.floor(windowStats.h / 18) - 2
+	drawPlayersSmall(tcount)
 end
 
 
@@ -164,101 +207,40 @@ function formatNumberK(n)
 	end
 end
 
--- @TODO: Refactor this mess. D:
 function drawPlayersSmall(count)
 	local i = 0
 	for _, pname in pairs(ourGame.internalPlayers) do
 		if i < count then
-			local y			= 3 + i * 18
+			local y			= 6 + i * 18
 			local player	= ourGame.players[pname]
 			local pdata		= ourGame.playerData[pname]
 			local pEXP		= (pdata.dexp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp) * 100
-			local pEXPrate	= 0
 
 			--love.graphics.setFont(fonts.big)
-			local col		= 128
-			if player.activityTimeout > 0 then
-				col			= 128 + ((player.activityTimeout / Game.activityTimeout) * 72)
-				pEXPrate	= ourGame:getExpPerTick(player, 1)
-			end
-			if player.activity > 0 then
-				col			= 200 + math.min(55, player.activity)
-			end
+			local col		= 255
 			if not player.isInChannel then
-				col			= 70
+				col			= 120
 			end
 
-			love.graphics.setColor(col, col, col)
-			love.graphics.print(pname, 3, y)
-			love.graphics.setColor(0, 0, 0)
-			love.graphics.rectangle("fill", 100, y, 265, 20)
-			love.graphics.setColor(255, 255, 255)
+			love.graphics.setFont(fonts.stars)
+			love.graphics.print(string.format("%X", pdata.starLevel), 3, y - 6)
+			love.graphics.setColor(255, 230, 120)
+			love.graphics.setFont(fonts.starnums)
+			love.graphics.print(string.format("%3s", pdata.starBadge), 7, y + 4)
+
 			love.graphics.setFont(fonts.small)
-			love.graphics.setFont(fonts.number)
-			love.graphics.print("Lv", 110, y + 3)
-			love.graphics.printf(string.format("%d", pdata.level)  , 122, y + 3,  28, "right")
-			love.graphics.printf(string.format("%s XP", formatNumberK(pdata.exp)), 126, y + 3, 102, "right")
-
-			love.graphics.setFont(fonts.numbersm)
-			if pEXPrate < 0.001 then
-				love.graphics.setColor(128, 128, 128)
-			elseif player.activity > 60 then
-				love.graphics.setColor(255, 238, 155)
-			end
-			love.graphics.printf(string.format("%.2f", pEXPrate), 370, y + 4, 28, "right")
-			love.graphics.setColor(255, 255, 255)
-
-			drawExpBar(230, y + 2, (400 - 270), (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), 6, false)
-		end
-		i = i + 1
-	end
-end
-
-
-function drawPlayersBig(count)
-	local i = 0
-	for _, pname in pairs(ourGame.internalPlayers) do
-		if i < count then
-			local y			= 3 + i * 35
-			local player	= ourGame.players[pname]
-			local pdata		= ourGame.playerData[pname]
-			local pEXP		= (pdata.dexp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp) * 100
-
-			love.graphics.setFont(fonts.big)
-			local col		= 128
-			local pEXPrate	= 0
-			if player.activityTimeout > 0 then
-				col			= 128 + ((player.activityTimeout / Game.activityTimeout) * 72)
-				pEXPrate	= ourGame:getExpPerTick(player, 1)
-			end
-			if player.activity > 0 then
-				col			= 200 + math.min(55, player.activity)
-			end
-			if not player.isInChannel then
-				col			= 70
-			end
-
 			love.graphics.setColor(col, col, col)
-			love.graphics.print(pname, 3, y + 8)
+			love.graphics.print(pname, 33, y)
 			love.graphics.setColor(0, 0, 0)
-			love.graphics.rectangle("fill", 135, y, 265, 40)
-			love.graphics.setColor(255, 255, 255)
-
+			love.graphics.rectangle("fill", 135, y, 265, 20)
+			love.graphics.setColor(col, col, col)
 			love.graphics.setFont(fonts.number)
-			love.graphics.printf(string.format("Lv%3d", pdata.level), 140, y + 6, 125, "left")
-			love.graphics.printf(string.format("%s EXP", formatNumberK(pdata.exp)), 143, y + 6, 124, "right")
+			love.graphics.print("Lv", 140, y + 3)
+			love.graphics.printf(string.format("%d", pdata.level)  , 152, y + 3,  28, "right")
+			love.graphics.printf(string.format("%s XP", formatNumberK(pdata.exp)), 156, y + 3, 102, "right")
+			love.graphics.setFont(fonts.small)
 
-			love.graphics.setFont(fonts.numbersm)
-			if pEXPrate < 0.001 then
-				love.graphics.setColor(128, 128, 128)
-			elseif player.activity > 60 then
-				love.graphics.setColor(255, 238, 155)
-			end
-			love.graphics.printf(string.format("%.2f", pEXPrate), 320, y + 8, 73, "right")
-			love.graphics.setColor(255, 255, 255)
-
-
-			drawExpBar(140, y + 16, 250, (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), nil, true)
+			drawExpBar(260, y + 2, (400 - 270), (pdata.exp - pdata.thisLevelExp) / (pdata.nextLevelExp - pdata.thisLevelExp), 6, false, (col / 255))
 		end
 		i = i + 1
 	end
@@ -289,22 +271,22 @@ function love.errhand(msg)
 end
 
 
-function drawExpBar(x, y, _w, pct, _h, _thick)
+function drawExpBar(x, y, _w, pct, _h, _thick, cmul)
 	local h		= _h and _h or 8
 	local t		= 1
 	local w		= _w
 	if _thick then
 		t		= 2
 		love.graphics.setLineWidth(2)
-		love.graphics.setColor(255, 255, 255)
+		love.graphics.setColor(255 * cmul, 255 * cmul, 255 * cmul)
 		love.graphics.rectangle("fill", x + t, y + t, pct * w, h - (2 - t))
-		love.graphics.setColor(160, 120, 255)
+		love.graphics.setColor(160 * cmul, 120 * cmul, 255 * cmul)
 		love.graphics.rectangle("line", x, y, w + 2, h + 2)
 	else
 		love.graphics.translate( 0.5, 0.5 )
-		love.graphics.setColor(255, 255, 255)
+		love.graphics.setColor(255 * cmul, 255 * cmul, 255 * cmul)
 		love.graphics.rectangle("fill", x + t + 1, y + t, pct * (w - 2), h - (2 - t))
-		love.graphics.setColor(160, 120, 255)
+		love.graphics.setColor(160 * cmul, 120 * cmul, 255 * cmul)
 		love.graphics.rectangle("line", x, y, w + 2, h + 2)
 	end
 
