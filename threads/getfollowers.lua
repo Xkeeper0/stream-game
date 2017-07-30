@@ -1,8 +1,10 @@
+-- All of this stuff is required to work
 local json			= require("json");
 local WebRequest	= require("luajit-request")
 local settings		= require("settings")
 local timer			= require("love.timer")
 
+-- Channels for communicating back to the main thread
 local channel		= love.thread.getChannel("following")
 local channelNew	= love.thread.getChannel("newFollowers")
 
@@ -10,6 +12,7 @@ local followDataS	= love.filesystem.read(settings.achannel .."-followers.json")
 local followerData	= { followers = {} }
 local startCursor	= nil
 
+-- Loads a list of followers that was previously saved
 if followDataS then
 	followerData	= json.decode(followDataS)
 	print("Pushing pre-loaded following list")
@@ -18,9 +21,10 @@ if followDataS then
 end
 
 
---local followData	= love.filesystem.write(settings.achannel ..".json", json.encode(ourGame.playerData))
-
 -- Debug function to recursively print table contents
+-- This can probably be removed now that it's working properly
+-- This function is copied from main.lua (oops)
+-- @FIXME Maybe put this in some "helper collection"
 function tprint (tbl, indent)
 	if not indent then indent = 0 end
 	for k, v in pairs(tbl) do
@@ -34,6 +38,8 @@ function tprint (tbl, indent)
 	end
 end
 
+-- Converts a date in Fun Format into something usable by us
+-- I think I stole this off the internet somewhere (oops)
 function dateToEpoch(dateString)
     local pattern = "(%d+)%-(%d+)%-(%d+)T(%d+):(%d+):(%d+)"
     local xyear, xmonth, xday, xhour, xminute, xseconds = dateString:match(pattern)
@@ -42,7 +48,9 @@ function dateToEpoch(dateString)
 end
 
 
-
+-- Converts a "follow length" into a "level"
+-- @FIXME This should probably be part of the game object,
+-- and not in the 'get followers' job (oops)
 function getLevel(years, days)
 	-- months: 0, 1, 2, 3, 6, 9
 	-- years: 1, 2, 3, 4, 5, 6
@@ -61,7 +69,9 @@ function getLevel(years, days)
 end
 
 
-
+-- This will break down a time into the length of time,
+-- as well as provide the correct "badge text"
+-- @FIXME This should probably go in the game obj too (oops)
 function checkLength(startTime)
 	local now		= os.time()
 	local days		= 86400
@@ -82,32 +92,45 @@ function checkLength(startTime)
 end
 
 
-
+-- Actually fetches the followers from Twitch
 local function getFollowing(startCursor, notifyNew)
 	print("running thread, starting with cursor ".. tostring(startCursor))
+
+	-- If we're done with this set of requests
 	local done			= false
+	-- Where we are in the list
 	local cursor		= startCursor and ("&cursor=".. startCursor) or ""
+	-- Total number of followers
 	local total			= 0
+	-- Followers that are newly on the list
 	local newFollowers	= {}
 	repeat
 
+		-- Ask for a list of followers from the API
 		local endpoint	= "channels/".. settings.achannel .."/follows?direction=asc&limit=100" .. cursor
 		print("Request Endpoint: ".. endpoint)
 		local response	= apiRequest(endpoint)
 		local follows	= json.decode(response.body)
 		local count		= 0
 
+		-- Iterate through all the various followers in this batch
 		for k,v in ipairs(follows.follows) do
+
+			-- Convert their timestamp into an epoch value
 			local epoch	= dateToEpoch(v.created_at)
+			-- Get duration in sensible values
 			local durationY, durationD, duration, badge	= checkLength(epoch)
+			-- Get the level from that duration
 			local level	= getLevel(durationY, durationD)
+			-- Add to the array of new ones
 			followerData.followers[v.user.name]	= { since = epoch, level = level, badge = badge }
+
 			if notifyNew then
-				print("***")
-				print(string.format("*** NEW FOLLOWER! ", v.user.name))
-				print("***")
+				-- If we're supposed to care about new ones, then announce it
+				print("*** New follower: ".. v.user.name)
 				newFollowers[v.user.name]	= followerData.followers[v.user.name]
 			end
+			-- Output the follower data to the console for debug
 			print(string.format("  %-30s - %12d seconds - %d years, %3d days - level %2d - badge: %s", v.user.name, duration, durationY, durationD, level, badge))
 			count		= count + 1
 		end
@@ -116,9 +139,10 @@ local function getFollowing(startCursor, notifyNew)
 		print(string.format("added %d followers, %d / %d, cursor %s", count, total, follows._total, follows._cursor))
 
 		if count == 0 then
+			-- If we didn't add any, we're done
 			done = true
 		else
-			-- Cursor is empty if no results
+			-- Otherwise, put the cursor at the end of the list and do it again
 			followerData.cursor	= follows._cursor
 			cursor				= "&cursor=".. follows._cursor
 			timer.sleep(.5)
