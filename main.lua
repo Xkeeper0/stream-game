@@ -223,10 +223,10 @@ function drawPlayersSmall(count)
 			end
 
 			love.graphics.setFont(fonts.stars)
-			love.graphics.print(string.format("%X", pdata.starLevel), 3, y - 6)
+			love.graphics.print(string.format("%X", pdata.starLevel), 2, y - 5)
 			love.graphics.setColor(255, 230, 120)
 			love.graphics.setFont(fonts.starnums)
-			love.graphics.print(string.format("%3s", pdata.starBadge), 7, y + 4)
+			love.graphics.print(string.format("%3s", pdata.starBadge), 9, y + 2)
 
 			love.graphics.setFont(fonts.small)
 			love.graphics.setColor(col, col, col)
