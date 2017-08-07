@@ -87,8 +87,7 @@ end
 
 function love.load()
 	love.audio.setVolume(0.5)
-	fonts.big		= love.graphics.newFont(18)
-	fonts.small		= love.graphics.newFont(12)
+	fonts.small		= love.graphics.newImageFont("images/mainfont.png", " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~⌂", 1)
 	fonts.number	= love.graphics.newImageFont("images/numbers.png", "0123456789 kEXPLv.")
 	fonts.numbersm	= love.graphics.newImageFont("images/numbers-small.png", "0123456789.")
 	fonts.stars		= love.graphics.newImageFont("images/starbadges.png", "0123456789ABCDEF")
@@ -315,6 +314,7 @@ function drawMessages()
 	local y	= windowStats.h - 15
 	love.graphics.setColor(0, 0, 0, 200)
 	love.graphics.rectangle("fill", 0, (y - 2) - (c - 1) * 12, 400, 100)
+	love.graphics.setFont(fonts.small)
 
 	for i, m in ipairs(messages) do
 		local y	= y - (c - i) * 12
